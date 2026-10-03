@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
+
+@theme {
+  --color-md-primary: var(--md-sys-color-primary);
+  --color-md-primary-container: var(--md-sys-color-primary-container);
+  --color-md-primary-on: var(--md-sys-color-on-primary);
+  --color-md-on-primary: var(--md-sys-color-on-primary);
+  --color-md-primary-on-container: var(--md-sys-color-on-primary-container);
+  --color-md-on-primary-container: var(--md-sys-color-on-primary-container);
+
+  --color-md-secondary: var(--md-sys-color-secondary);
+  --color-md-secondary-container: var(--md-sys-color-secondary-container);
+  --color-md-secondary-on: var(--md-sys-color-on-secondary);
+  --color-md-on-secondary: var(--md-sys-color-on-secondary);
+  --color-md-secondary-on-container: var(--md-sys-color-on-secondary-container);
+  --color-md-on-secondary-container: var(--md-sys-color-on-secondary-container);
+
+  --color-md-surface: var(--md-sys-color-surface);
+  --color-md-surface-on: var(--md-sys-color-on-surface);
+  --color-md-on-surface: var(--md-sys-color-on-surface);
+  --color-md-surface-on-variant: var(--md-sys-color-on-surface-variant);
+  --color-md-surface-low: var(--md-sys-color-surface-container-low);
+  --color-md-surface-container: var(--md-sys-color-surface-container);
+  --color-md-surface-high: var(--md-sys-color-surface-container-high);
+  --color-md-surface-highest: var(--md-sys-color-surface-container-highest);
+
+  --color-md-outline: var(--md-sys-color-outline);
+  --color-md-outline-variant: var(--md-sys-color-outline-variant);
+
+  --color-md-success: var(--color-positive);
+  --color-md-error: var(--color-negative);
+
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius-expressive-user: 22px 22px 6px 22px;
+  --radius-expressive-ai: 22px 22px 22px 6px;
+  --radius-expressive-card: 20px 20px 8px 20px;
+}
+
+@layer base {
+  /* =========================================================
+     MD3 LIGHT THEME (Indonesian Judicial Navy & Warm Terracotta)
+     Modelled after InvestOwl's high-contrast ergonomic design
+     ========================================================= */
+  :root {
+    --md-sys-color-surface: #F8F9FD;
+    --md-sys-color-on-surface: #141B2D;
+    --md-sys-color-on-surface-variant: #454D5D;
+
+    --md-sys-color-surface-container-lowest: #FFFFFF;
+    --md-sys-color-surface-container-low: #F1F4F9;
+    --md-sys-color-surface-container: #E8EDF5;
+    --md-sys-color-surface-container-high: #DFE5EF;
+    --md-sys-color-surface-container-highest: #D5DDE8;
+
+    --md-sys-color-primary: #0F2744;
+    --md-sys-color-on-primary: #FFFFFF;
+    --md-sys-color-primary-container: #D8E6F8;
+    --md-sys-color-on-primary-container: #001B3A;
+
+    --md-sys-color-secondary: #9E3F17;
+    --md-sys-color-on-secondary: #FFFFFF;
+    --md-sys-color-secondary-container: #FFDCD2;
+    --md-sys-color-on-secondary-container: #3D1100;
+
+    --md-sys-color-outline: #757D8A;
+    --md-sys-color-outline-variant: #CBD2DE;
+
+    --color-positive: #166534;
+    --color-negative: #991B1B;
+  }
+
+  /* =========================================================
+     MD3 DARK THEME
+     Modelled after InvestOwl's dark terminal theme
+     ========================================================= */
+  [data-theme="dark"], .dark {
+    --md-sys-color-surface: #0E131F;
+    --md-sys-color-on-surface: #E8ECF4;
+    --md-sys-color-on-surface-variant: #C2C9D6;
+
+    --md-sys-color-surface-container-lowest: #070A12;
+    --md-sys-color-surface-container-low: #131929;
+    --md-sys-color-surface-container: #192033;
+    --md-sys-color-surface-container-high: #20293F;
+    --md-sys-color-surface-container-highest: #2A344F;
+
+    --md-sys-color-primary: #8EB7F0;
+    --md-sys-color-on-primary: #002B59;
+    --md-sys-color-primary-container: #183C6C;
+    --md-sys-color-on-primary-container: #D8E6F8;
+
+    --md-sys-color-secondary: #FFB59E;
+    --md-sys-color-on-secondary: #581E04;
+    --md-sys-color-secondary-container: #772C0B;
+    --md-sys-color-on-secondary-container: #FFDCD2;
+
+    --md-sys-color-outline: #8E96A4;
+    --md-sys-color-outline-variant: #3F4758;
+
+    --color-positive: #10B981;
+    --color-negative: #F43F5E;
+  }
+
+  body {
+    background-color: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Hallmark Discipline 6: Typography purity - NO italic headers */
+  h1, h2, h3, h4, h5, h6 {
+    font-style: normal;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+}
+
+/* Custom Scrollbar inspired by InvestOwl */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--md-sys-color-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--md-sys-color-surface-container-highest);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--md-sys-color-outline);
+}

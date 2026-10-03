@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADIL AI · Asisten Hukum & Regulasi Indonesia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-light">
+  <div class="app-layout">
+    
+    <!-- Top Navigation Bar (M3 Expressive Top App Bar) -->
+    <header class="top-app-bar">
+      <div class="brand-group">
+        <div class="brand-mark">
+          <span class="brand-icon">⚖️</span>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">ADIL AI <span class="badge-accent">Peraturan.go.id</span></h1>
+          <p class="brand-subtitle">Asisten Penalaran Hukum Cerdas & Proaktif</p>
+        </div>
+      </div>
+
+      <div class="header-status-group">
+        <div class="status-pill status-active" title="Status Pemberlakuan KUHP Nasional">
+          <span class="status-dot"></span>
+          <span>KUHP Baru (UU 1/2023) Terakomodasi</span>
+        </div>
+        <div class="status-pill status-rag" id="headerRagStatus">
+          <span class="status-icon">📚</span>
+          <span id="indexedCountLabel">Memuat regulasi...</span>
+        </div>
+        <button class="icon-button" id="themeToggleBtn" aria-label="Toggle Dark/Light Mode" title="Ganti Tema">
+          <span class="theme-icon">🌓</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace (Adaptive Split View) -->
+    <main class="main-content">
+      
+      <!-- Left: Interactive Consultation & Case Workspace -->
+      <section class="consultation-section">
+        
+        <!-- Quick Starter Scenarios (Hallmark Tactile Launchers) -->
+        <div class="scenario-launcher-bar">
+          <span class="launcher-label">Skenario Kasus Uji:</span>
+          <div class="launcher-chips">
+            <button class="chip-button" data-query="apa hukuman bagi seorang yang membunuh kedua orang tuanya">
+              <span class="chip-icon">👨‍👩‍👧</span>
+              <span>Pembunuhan Orang Tua (Pemberatan 1/3)</span>
+            </button>
+            <button class="chip-button" data-query="apakah seseorang yang membunuh satu keluarga bisa didakwakan/ dihukum seumur hidup?">
+              <span class="chip-icon">🏠</span>
+              <span>Pembunuhan Satu Keluarga & Seumur Hidup</span>
+            </button>
+            <button class="chip-button" data-query="bagaimana alur polisi atau pengadilan menetapkan status tersangka pada seseorang">
+              <span class="chip-icon">🚨</span>
+              <span>Penetapan Tersangka (KUHAP jo MK 21/2014)</span>
+            </button>
+            <button class="chip-button chip-crawler" id="openIngestModalBtn">
+              <span class="chip-icon">📥</span>
+              <span>Ingest UU Baru</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat / Case Interaction Thread -->
+        <div class="interaction-thread" id="chatThread">
+          <!-- Welcome Guidance Card -->
+          <div class="message-card system-card welcome-card">
+            <div class="card-header">
+              <div class="card-avatar">⚖️</div>
+              <div>
+                <h2 class="card-title">Ruang Konsultasi Hukum Proaktif</h2>
+                <span class="card-timestamp">Resmi · Berbasis Regulasi Positif RI</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <p>Selamat datang di <strong>ADIL AI</strong>. Sistem ini mengadopsi prinsip <strong>kehati-hatian hukum</strong>: kami mendalami fakta secara cermat dan tidak serta-merta mengambil keputusan definitif jika kronologi peristiwa belum lengkap.</p>
+              <div class="features-pill-row">
+                <span class="feature-tag">✔ Dualisme KUHP WvS & UU 1/2023</span>
+                <span class="feature-tag">✔ Sinergi Putusan MK 21/2014</span>
+                <span class="feature-tag">✔ Analisis IRAC (Unsur Delik)</span>
+                <span class="feature-tag">✔ Integrasi Langsung Peraturan.go.id</span>
+              </div>
+              <p class="prompt-hint">Silakan ketik permasalahan hukum Anda di bawah atau pilih salah satu skenario uji di atas.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sticky Floating Input Area (M3 Expressive Docked Bar) -->
+        <div class="input-dock-container">
+          <form class="input-form" id="queryForm">
+            <div class="input-surface">
+              <textarea 
+                id="queryInput" 
+                class="query-textarea" 
+                rows="1" 
+                placeholder="Tanyakan persoalan hukum di Indonesia (misal: sanksi pembunuhan, hak tersangka, perlindungan anak)..."
+                required
+              ></textarea>
+              <button type="submit" class="submit-button" id="submitBtn" aria-label="Kirim Pertanyaan">
+                <span class="submit-icon">➔</span>
+              </button>
+            </div>
+          </form>
+          <div class="dock-disclaimer">
+            <span>⚖️ Analisis yuridis normatif berdasarkan peraturan perundang-undangan resmi RI. Bukan pengganti nasihat formal advokat di pengadilan.</span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Right: Live Legal Drawer / Context Inspector -->
+      <aside class="legal-drawer" id="legalDrawer">
+        <div class="drawer-header">
+          <div class="drawer-title-group">
+            <span class="drawer-icon">📖</span>
+            <h2 class="drawer-title">Inspektur Regulasi Terverifikasi</h2>
+          </div>
+          <span class="drawer-count-badge" id="drawerItemCount">0 Dokumen</span>
+        </div>
+
+        <div class="drawer-body" id="drawerBody">
+          <div class="drawer-empty-state">
+            <div class="empty-illustration">📜</div>
+            <p class="empty-title">Belum ada pasal yang dirujuk</p>
+            <p class="empty-desc">Ketik pertanyaan atau klik skenario untuk melihat pasal-pasal resmi yang menjadi rujukan pertimbangan hukum.</p>
+          </div>
+        </div>
+      </aside>
+
+    </main>
+
+    <!-- Ingestion Modal (M3 Expressive Dialog) -->
+    <div class="modal-backdrop" id="ingestModal">
+      <div class="modal-surface">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <span class="modal-icon">📥</span>
+            <h3 class="modal-title">Ingest Peraturan dari Peraturan.go.id</h3>
+          </div>
+          <button class="icon-button modal-close-btn" id="closeIngestModalBtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc">
+            Masukkan URL halaman detail peraturan dari portal resmi <code>peraturan.go.id</code>. 
+            Sistem akan mengunduh PDF, mengekstrak hierarki Pasal dan Penjelasan, serta mengindeksnya ke dalam basis pengetahuan RAG.
+          </p>
+          <div class="form-group">
+            <label for="ingestUrlInput" class="form-label">URL Halaman Peraturan</label>
+            <input 
+              type="url" 
+              id="ingestUrlInput" 
+              class="form-input" 
+              placeholder="https://peraturan.go.id/id/uu-no-5-tahun-2026"
+              value="https://peraturan.go.id/id/uu-no-5-tahun-2026"
+            >
+          </div>
+          <div class="ingest-progress-container" id="ingestProgress">
+            <div class="loading-spinner"></div>
+            <span id="ingestProgressText">Mengunduh PDF dan mem-parsing pasal...</span>
+          </div>
+          <div class="ingest-result-banner" id="ingestResultBanner"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="button-tonal" id="cancelIngestBtn">Batal</button>
+          <button class="button-filled" id="startIngestBtn">Mulai Ingestion</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
