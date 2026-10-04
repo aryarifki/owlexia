@@ -106,9 +106,14 @@ def display_assessment(assessment):
     console.print("\n[bold cyan]🔬 Penerapan & Subsumpsi Hukum (Application):[/bold cyan]")
     console.print(Markdown(assessment.application_analysis))
 
-    # Alur Prosedural jika ada (misal penetapan tersangka)
+    # Alur Prosedural jika ada (misal penetapan tersangka atau tahapan regulasi)
     if assessment.procedural_steps:
-        console.print("\n[bold yellow]📋 Alur Prosedural Penetapan Status Tersangka yang Sah:[/bold yellow]")
+        is_suspect = any(
+            any(w in s.lower() for w in ["tersangka", "praperadilan", "sprindik", "penyidikan"])
+            for s in assessment.procedural_steps
+        ) or any(w in (assessment.issue or "").lower() for w in ["tersangka", "praperadilan"])
+        title = "Alur Prosedural Penetapan Status Tersangka yang Sah" if is_suspect else "Tahapan & Alur Prosedural Hukum"
+        console.print(f"\n[bold yellow]📋 {title}:[/bold yellow]")
         for step in assessment.procedural_steps:
             console.print(f"  [bold green]✔[/bold green] {step}")
 

@@ -95,9 +95,21 @@ def get_crawler_status():
     return stats
 
 
+@app.post("/api/sync-database")
+def sync_database():
+    """Reloads articles from PostgreSQL database into AI retriever memory."""
+    count = orchestrator.reload_articles_from_db()
+    return {
+        "success": True,
+        "total_articles_in_memory": count,
+        "message": f"Berhasil menyinkronkan {count} pasal dari PostgreSQL ke dalam memori agen AI"
+    }
+
+
 @app.get("/api/regulations")
-def list_regulations():
+def list_regulations(limit: int = 500, offset: int = 0):
     articles = orchestrator.retriever.articles
+    slice_articles = articles[offset : offset + limit] if limit > 0 else articles
     return {
         "total_articles": len(articles),
         "articles": [
@@ -109,7 +121,7 @@ def list_regulations():
                 "status": a.status.value,
                 "chapter": a.chapter
             }
-            for a in articles
+            for a in slice_articles
         ]
     }
 
@@ -119,21 +131,26 @@ def process_legal_query(req: QueryRequest):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    resp = orchestrator.process_query(
-        user_query=req.query,
-        case_context=req.case_context,
-        force_assessment=req.force_assessment
-    )
+    try:
+        resp = orchestrator.process_query(
+            user_query=req.query,
+            case_context=req.case_context,
+            force_assessment=req.force_assessment
+        )
 
-    return {
-        "is_clarification_mode": resp.is_clarification_mode,
-        "message": resp.message,
-        "completeness_score": resp.completeness.score,
-        "missing_elements": resp.completeness.missing_critical_elements,
-        "clarification_questions": [q.model_dump() for q in resp.questions],
-        "assessment": resp.assessment.model_dump() if resp.assessment else None,
-        "retrieved_articles": [a.model_dump() for a in resp.retrieved_articles]
-    }
+        return {
+            "is_clarification_mode": resp.is_clarification_mode,
+            "message": resp.message,
+            "completeness_score": resp.completeness.score,
+            "missing_elements": resp.completeness.missing_critical_elements,
+            "clarification_questions": [q.model_dump() for q in resp.questions],
+            "assessment": resp.assessment.model_dump() if resp.assessment else None,
+            "retrieved_articles": [a.model_dump() for a in resp.retrieved_articles]
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan pemrosesan analisis hukum: {str(e)}")
 
 
 @app.post("/api/ingest")

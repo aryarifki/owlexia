@@ -5,7 +5,9 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg)]()
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17%2B%20pgvector-336791.svg)]()
-[![Tests](https://img.shields.io/badge/tests-24%2F24%20passed-brightgreen.svg)]()
+[![Cloudflare R2](https://img.shields.io/badge/Cloudflare_R2-Object_Storage-F38020.svg)]()
+[![Gemini LLM](https://img.shields.io/badge/Gemini_LLM-Reasoning_Engine-4285F4.svg)]()
+[![Tests](https://img.shields.io/badge/tests-26%2F26%20passed-brightgreen.svg)]()
 
 **OWLEXIA** adalah platform asisten kecerdasan buatan hukum Indonesia berbasis data regulasi resmi ([peraturan.go.id](https://peraturan.go.id)), **Hierarchical Hybrid RAG**, dan **Proactive Reasoning Engine**.
 
@@ -13,7 +15,7 @@ OWLEXIA memadukan ketajaman analisis yuridis (metode IRAC — *Issue, Rule, Appl
 
 ---
 
-## 🌐 Akses Publik
+## 🌐 Akses Publik & Antarmuka
 
 - **URL Produksi**: [https://owlexia.cugarete.me](https://owlexia.cugarete.me)
 - **API Health**: `https://owlexia.cugarete.me/api/health`
@@ -27,17 +29,20 @@ OWLEXIA memadukan ketajaman analisis yuridis (metode IRAC — *Issue, Rule, Appl
 ```mermaid
 flowchart TD
     subgraph Client["Frontend (Material 3 Expressive)"]
-        UI["React 18 + Tailwind CSS + Lucide"]
+        UI["React 18 + Tailwind CSS + Lucide Icons"]
     end
 
     subgraph Edge["Cloudflare Edge Network"]
         CF["Cloudflare Tunnel (owlexia.cugarete.me)"]
+        R2["Cloudflare R2 (owlexia-r2 CDN Storage)"]
     end
 
     subgraph Service["Application Core (systemd: owlexia.service)"]
         API["FastAPI (Multi-Worker Uvicorn + GZipMiddleware)"]
         PM["PromptManager (Hot-reloading prompts/system_prompt.md)"]
-        RE["Proactive Reasoning Engine (IRAC + Legal Dualism)"]
+        RE["LegalReasoner (IRAC Engine)"]
+        LLM["Google Gemini API (Multi-Model Failover)"]
+        HR["LegalRetriever (Hybrid BM25 + PostgreSQL FTS)"]
     end
 
     subgraph Storage["Knowledge Base (PostgreSQL 17)"]
@@ -46,16 +51,20 @@ flowchart TD
         VEC["pgvector Semantic Embeddings"]
     end
 
-    subgraph Ingestion["Crawler Engine (/root/Peraturan-Crawler)"]
-        Crawler["targeted_crawler.js (Targeted by Year & Keyword)"]
+    subgraph Ingestion["Crawler Engine (O-Crawler)"]
+        Crawler["anti_waf_crawler.py (Anti-WAF TLS/JA3 + R2 Upload)"]
     end
 
     UI <--> Edge
     Edge <--> API
     API <--> PM
     API <--> RE
-    RE <--> Storage
+    RE <--> LLM
+    RE <--> HR
+    HR <--> Storage
+    Storage <--> R2
     Crawler --> Storage
+    Crawler --> R2
 ```
 
 ---
@@ -69,15 +78,25 @@ flowchart TD
 ### 2. Sinergi Putusan MK & KUHAP
 - Validasi penetapan tersangka sesuai **Putusan MK No. 21/PUU-XII/2014** (wajib minimal 2 alat bukti sah dan pemeriksaan calon tersangka) serta mekanisme hak Praperadilan.
 
-### 3. Dynamic Prompt System & Hot-Reloading
+### 3. Mesin Penalaran IRAC Berbasis Gemini LLM & Heuristik Deterministik
+- **Gemini LLM Integration**: Penalaran mendalam menggunakan model Gemini (`gemini-flash-lite-latest` / `gemini-3.5-flash`) dengan skema JSON terstruktur.
+- **Failover Bertingkat**: Otomatis berpindah model jika terjadi keterbatasan kuota atau timeout API, hingga ke penalaran heuristik rule-based jika jaringan offline.
+- Output terstruktur mencakup: *Case Summary*, *Legal Issue*, *Application Analysis*, *Conclusion*, *Aggravating Factors*, *Mitigating Factors*, dan *Procedural Steps*.
+
+### 4. Hybrid Retrieval (BM25 + PostgreSQL FTS Boost)
+- Menggabungkan algoritma **BM25Okapi** pada korpus in-memory dengan **PostgreSQL Full-Text Search (FTS)** berbasis kamus bahasa Indonesia dan GIN index.
+- Menjamin pasal-pasal baru yang di-*ingest* langsung dapat ditemukan seketika (*instant discoverability*).
+
+### 5. Integrasi Cloudflare R2 Storage
+- Dokumen PDF otentik lembaran negara disimpan di **Cloudflare R2 Object Storage** dengan zero egress cost.
+- Tautan PDF resmi langsung tersaji pada kartu referensi pasal di frontend UI.
+
+### 6. Dynamic Prompt System & Hot-Reloading
 - System prompt disimpan pada file transparan [`prompts/system_prompt.md`](prompts/system_prompt.md).
 - Dilengkapi **auto hot-reload** berbasis timestamp file (`mtime`). Modifikasi prompt langsung aktif saat runtime tanpa memerlukan restart server.
-- Tersedia endpoint `GET /api/prompt` dan `POST /api/prompt` untuk melihat dan memperbarui prompt secara terprogram.
+- Tersedia endpoint `GET /api/prompt` dan `POST /api/prompt` untuk pembaruan prompt terprogram.
 
-### 4. Natural & Conversational Intelligence
-- Agen menjawab pertanyaan umum (katalog peraturan, status regulasi, penjelasan konsep) dengan ramah, komunikatif, dan berbasis data tanpa memuntahkan pasal-pasal mentah jika tidak diminta.
-
-### 5. Optimasi Kinerja Kelas Produksi (InvestOwl Reference)
+### 7. Optimasi Kinerja Kelas Produksi
 - **GZip Compression**: Kompresi respon otomatis (`GZipMiddleware(minimum_size=1000)`).
 - **Multi-Worker Execution**: Menjalankan 2 worker proses Uvicorn konkuren.
 - **Daemon Otomatis**: Dikelola oleh systemd (`owlexia.service`) dengan *auto-restart on failure*.
@@ -92,27 +111,29 @@ flowchart TD
 ├── cli.py                    # Terminal CLI interaktif & mode demo
 ├── pytest.ini                # Konfigurasi pengujian pytest
 ├── requirements.txt          # Dependensi Python
-├── env.example               # Contoh konfigurasi environment
+├── env.example               # Template konfigurasi environment
 ├── database/
 │   └── schema.sql            # Skema DDL tabel PostgreSQL 17
 ├── engine/
-│   ├── agent_system.py       # Orchestrator agen hukum
-│   ├── database.py           # PostgreSQL adapter & full-text search
-│   ├── models.py             # Schema Pydantic
+│   ├── agent_system.py       # Orchestrator agen hukum utama
+│   ├── config.py             # Manajemen konfigurasi terpusat & .env
+│   ├── database.py           # Adapter PostgreSQL & full-text search
+│   ├── models.py             # Model data Pydantic (LegalArticle, Assessment, dll.)
 │   ├── parser.py             # Parser dokumen hukum & ekstraksi pasal
-│   ├── proactive_agent.py    # Klarifikasi proaktif kasus hukum
+│   ├── proactive_agent.py    # Modul klarifikasi proaktif perkara hukum
 │   ├── prompt_manager.py     # Engine hot-reload system prompt
-│   ├── reasoner.py           # Engine penalaran yuridis IRAC
-│   └── retriever.py          # Hybrid retrieval (BM25 + SQL FTS)
+│   ├── reasoner.py           # Engine penalaran yuridis IRAC (Gemini LLM + Heuristik)
+│   └── retriever.py          # Hybrid retrieval (BM25 + SQL FTS Boost)
 ├── prompts/
 │   ├── system_prompt.md      # SYSTEM PROMPT AKTIF (dapat diedit langsung)
 │   └── README.md             # Panduan struktur penulisan prompt
 ├── scripts/
 │   └── migrate_to_postgres.py# Skrip migrasi data lokal ke PostgreSQL
 ├── static/                   # Fallback web assets
-├── tests/                    # 24 Unit tests lengkap
+├── tests/                    # 26 Unit tests lengkap
 │   ├── test_api.py
 │   ├── test_database.py
+│   ├── test_gemini_reasoner.py
 │   ├── test_legal_agent.py
 │   ├── test_parser.py
 │   └── test_prompt_manager.py
@@ -128,22 +149,34 @@ flowchart TD
 
 ### 1. Setup Lingkungan Python
 ```bash
-cd /root/legal-ai-agent
+git clone git@github.com:aryarifki/owlexia.git
+cd owlexia
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Konfigurasi Database PostgreSQL
-Pastikan database `owlexia_db` telah dibuat di PostgreSQL:
+### 2. Konfigurasi Lingkungan (`.env`)
+Salin file konfigurasi:
 ```bash
-# Jalankan skema DDL
-sudo -u postgres psql -d owlexia_db -f database/schema.sql
+cp env.example .env
+```
+Sesuaikan parameter kredensial:
+```env
+DATABASE_URL=postgresql://owlexia:owlexia_pass@localhost:5432/owlexia_db
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-flash-lite-latest
+REASONER_MODE=llm
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_BUCKET_NAME=owlexia-r2
+R2_API_TOKEN=your_r2_api_token
+R2_PUBLIC_URL=https://pub-xxxxxx.r2.dev
 ```
 
-### 3. Migrasi & Seeding Data Awal (Opsional)
+### 3. Konfigurasi Database PostgreSQL
+Inisialisasi skema tabel di PostgreSQL:
 ```bash
-python scripts/migrate_to_postgres.py
+sudo -u postgres psql -d owlexia_db -f database/schema.sql
 ```
 
 ### 4. Menjalankan Server Lokal (Development)
@@ -175,7 +208,8 @@ After=network.target postgresql.service
 Type=simple
 User=root
 WorkingDirectory=/root/legal-ai-agent
-Environment="DATABASE_URL=postgresql://owlexia:owlexia_pass@localhost:5432/owlexia_db"
+EnvironmentFile=/root/legal-ai-agent/.env
+Environment="PYTHONPATH=/root/legal-ai-agent"
 ExecStart=/root/legal-ai-agent/venv/bin/uvicorn api:app --host 0.0.0.0 --port 8000 --workers 2
 Restart=on-failure
 RestartSec=5s
@@ -186,48 +220,18 @@ WantedBy=multi-user.target
 
 ---
 
-## 🌐 Pemeliharaan Cloudflare Tunnel
-
-Subdomain `https://owlexia.cugarete.me` terhubung melalui tunnel `investowl-tunnel` (`774c1dad-f104-457d-81cd-08c878bfbd4f`).
-
-- Konfigurasi rute berada di: `/etc/cloudflared/config.yml`
-- Status Tunnel:
-  ```bash
-  sudo systemctl status cloudflared
-  ```
-- Restart Tunnel jika diperlukan:
-  ```bash
-  sudo systemctl restart cloudflared
-  ```
-
----
-
-## 🗃️ Prosedur Pencadangan Database (Backup & Restore)
-
-### Backup Database:
-```bash
-pg_dump -U owlexia -h localhost -d owlexia_db -F c -b -v -f /root/owlexia_db_backup_$(date +%Y%m%d).dump
-```
-
-### Restore Database:
-```bash
-pg_restore -U owlexia -h localhost -d owlexia_db -v /root/owlexia_db_backup_YYYYMMDD.dump
-```
-
----
-
 ## 🧪 Pengujian (Test Suite)
 
-OWLEXIA dilengkapi 24 unit test yang mencakup pengujian API, konektivitas database PostgreSQL, logika penalaran IRAC, klarifikasi proaktif, parser regulasi, dan hot-reloading prompt manager:
+OWLEXIA dilengkapi 26 unit test otomatis yang mencakup pengujian API, konektivitas database PostgreSQL, logika penalaran IRAC berbasis Gemini LLM & fallback heuristik, klarifikasi proaktif, parser regulasi, dan hot-reloading prompt manager:
 
 ```bash
 cd /root/legal-ai-agent
-/root/legal-ai-agent/venv/bin/pytest
+./venv/bin/pytest
 ```
 
 **Hasil Pengujian:**
 ```
-======================== 24 passed, 1 warning in 0.96s =========================
+======================== 26 passed, 1 warning in 27.53s ========================
 ```
 
 ---

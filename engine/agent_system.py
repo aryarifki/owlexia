@@ -41,8 +41,33 @@ class LegalAgentOrchestrator:
     """Master orchestrator for the Indonesian Legal AI Agent."""
 
     def __init__(self, custom_articles: Optional[List[LegalArticle]] = None):
-        articles = list(custom_articles or get_all_articles())
-        
+        # 1. Initialize DB adapter
+        try:
+            from engine.database import OwlexiaDatabase
+            self.db = OwlexiaDatabase()
+        except Exception:
+            self.db = None
+
+        # 2. Gather articles: Priority from PostgreSQL, fallback to seed regulations
+        articles: List[LegalArticle] = []
+        if custom_articles:
+            articles = list(custom_articles)
+        elif self.db and self.db.test_connection():
+            db_articles = self.db.get_all_articles_as_models()
+            if db_articles:
+                articles = db_articles
+
+        # Ensure seed landmark regulations (KUHP, KUHAP, Putusan MK) are present
+        seed_articles = get_all_articles()
+        if not articles:
+            articles = list(seed_articles)
+        else:
+            existing_slugs = {f"{a.regulation_number}_{a.article_number}".lower() for a in articles}
+            for sa in seed_articles:
+                key = f"{sa.regulation_number}_{sa.article_number}".lower()
+                if key not in existing_slugs:
+                    articles.append(sa)
+
         # Load any additional articles ingested via pipeline
         from pathlib import Path
         import json
@@ -51,12 +76,16 @@ class LegalAgentOrchestrator:
             try:
                 with open(parsed_file, "r", encoding="utf-8") as f:
                     stored_data = json.load(f)
+                    existing_slugs = {f"{a.regulation_number}_{a.article_number}".lower() for a in articles}
                     for item in stored_data:
-                        articles.append(LegalArticle(**item))
+                        art = LegalArticle(**item)
+                        key = f"{art.regulation_number}_{art.article_number}".lower()
+                        if key not in existing_slugs:
+                            articles.append(art)
             except Exception:
                 pass
 
-        self.retriever = LegalRetriever(articles)
+        self.retriever = LegalRetriever(articles, db=self.db)
         self.case_analyzer = ProactiveCaseAnalyzer()
         self.reasoner = LegalReasoner()
         try:
@@ -65,25 +94,36 @@ class LegalAgentOrchestrator:
         except Exception:
             self.prompt_manager = None
 
-        try:
-            from engine.database import OwlexiaDatabase
-            self.db = OwlexiaDatabase()
-        except Exception:
-            self.db = None
+    def reload_articles_from_db(self) -> int:
+        """Dynamically reloads articles from PostgreSQL database without server restart."""
+        if not self.db or not self.db.test_connection():
+            return len(self.retriever.articles)
+        db_articles = self.db.get_all_articles_as_models()
+        if db_articles:
+            existing_slugs = {f"{a.regulation_number}_{a.article_number}".lower() for a in db_articles}
+            for sa in get_all_articles():
+                key = f"{sa.regulation_number}_{sa.article_number}".lower()
+                if key not in existing_slugs:
+                    db_articles.append(sa)
+            self.retriever = LegalRetriever(db_articles, db=self.db)
+        return len(self.retriever.articles)
 
     def _classify_intent(self, query: str) -> str:
         q = query.lower().strip()
 
-        # 1. Pertanyaan seputar isi basis data / koleksi regulasi
+        # 1. Pertanyaan seputar isi basis data / koleksi regulasi / pasal
         meta_phrases = [
             "apa saja peraturan", "peraturan apa saja", "peraturan apa aja",
             "undang-undang apa saja", "undang undang apa saja", "uu apa saja", "uu apa aja",
+            "pasal apa saja", "pasal apa aja", "ada pasal apa", "koleksi pasal", "daftar pasal",
+            "apa saja pasal", "sebutkan pasal", "pasal yang ada", "pasal yang tersimpan",
             "apa yang ada di database", "isi database", "database kamu", "database anda",
             "basis data kamu", "basis data anda", "koleksi hukum", "koleksi peraturan",
             "daftar peraturan", "daftar undang-undang", "daftar uu", "ada data apa saja",
             "data hukum apa saja", "regulasi apa saja", "peraturan yang ada",
             "peraturan yang tersimpan", "kamu punya peraturan apa", "kamu punya uu apa",
-            "tersimpan di database", "isi basis data", "list peraturan", "list uu"
+            "kamu punya pasal apa", "tersimpan di database", "isi basis data", "list peraturan",
+            "list uu", "list pasal", "apa isi database", "tampilkan isi database"
         ]
         if any(p in q for p in meta_phrases):
             return "INTENT_DATABASE_METADATA"
@@ -104,11 +144,15 @@ class LegalAgentOrchestrator:
     def _format_database_metadata_response(self) -> LegalAgentResponse:
         total_articles = 0
         db_regulations = []
-        if self.db and self.db.test_connection():
-            total_articles = self.db.get_total_articles_count()
-            db_regulations = self.db.get_regulations_list()
-        else:
+        try:
+            if self.db and self.db.test_connection():
+                total_articles = self.db.get_total_articles_count()
+                db_regulations = self.db.get_regulations_list()
+            else:
+                total_articles = len(self.retriever.articles)
+        except Exception:
             total_articles = len(self.retriever.articles)
+            db_regulations = []
 
         # Kelompokkan regulasi berdasarkan kategori
         crawled_list = []

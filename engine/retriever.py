@@ -20,15 +20,28 @@ def tokenize(text: str) -> List[str]:
 
 
 class LegalRetriever:
-    """Hybrid Retriever combining BM25 keyword matching and semantic vector scoring."""
+    """Hybrid Retriever combining BM25 keyword matching, semantic vector scoring, and PostgreSQL FTS."""
 
-    def __init__(self, articles: Optional[List[LegalArticle]] = None):
+    def __init__(self, articles: Optional[List[LegalArticle]] = None, db: Optional[Any] = None):
+        self.db = db
         self.articles: List[LegalArticle] = articles or []
         self.bm25: Optional[BM25Okapi] = None
         self.corpus_tokens: List[List[str]] = []
         self.vocabulary: Dict[str, int] = {}
         self.idf: Dict[str, float] = {}
+
         if self.articles:
+            self._index_articles()
+        elif self.db:
+            self.reload_from_db()
+
+    def reload_from_db(self):
+        """Loads all articles from PostgreSQL database and builds index."""
+        if not self.db:
+            return
+        db_articles = self.db.get_all_articles_as_models()
+        if db_articles:
+            self.articles = db_articles
             self._index_articles()
 
     def add_articles(self, new_articles: List[LegalArticle]):
@@ -144,6 +157,24 @@ class LegalRetriever:
                 hybrid_score += 0.35
 
             scored_articles.append((article, hybrid_score))
+
+        # 4. Dynamic PostgreSQL FTS Hybrid Boost (if database connection available)
+        if self.db:
+            try:
+                db_matches = self.db.search_articles_as_models(query, limit=top_k * 2)
+                existing_map = {f"{a.regulation_number}_{a.article_number}": idx for idx, (a, s) in enumerate(scored_articles)}
+                for rank_idx, db_art in enumerate(db_matches):
+                    fts_boost = max(0.15, 0.45 - (rank_idx * 0.05))
+                    key = f"{db_art.regulation_number}_{db_art.article_number}"
+                    if key in existing_map:
+                        idx = existing_map[key]
+                        art, old_score = scored_articles[idx]
+                        scored_articles[idx] = (art, old_score + fts_boost)
+                    else:
+                        # Article in PostgreSQL but not in in-memory corpus
+                        scored_articles.append((db_art, 0.6 + fts_boost))
+            except Exception:
+                pass
 
         # Sort descending by hybrid score
         scored_articles.sort(key=lambda x: x[1], reverse=True)

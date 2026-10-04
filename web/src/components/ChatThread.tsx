@@ -16,8 +16,14 @@ interface ChatThreadProps {
 }
 
 export const ChatThread: React.FC<ChatThreadProps> = ({ messages, isLoading, onSelectOption }) => {
+  const bottomRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 scroll-smooth">
+    <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-6 pb-36 sm:pb-44 flex flex-col gap-4 sm:gap-6 scroll-smooth">
       {/* Welcome Card if no messages yet */}
       {messages.length === 0 && (
         <div className="bg-md-surface-container border border-md-outline-variant/50 rounded-2xl p-6 shadow-sm">
@@ -139,21 +145,31 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, isLoading, onS
               </div>
 
               {/* Procedural Steps if available */}
-              {assess.procedural_steps && assess.procedural_steps.length > 0 && (
-                <div className="bg-md-surface border border-md-outline-variant/40 rounded-xl p-4">
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-md-primary-container text-md-primary-on-container">
-                    Alur Prosedural Penetapan Tersangka yang Sah
-                  </span>
-                  <ul className="mt-2.5 space-y-1.5">
-                    {assess.procedural_steps.map((step, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-xs bg-md-surface-low p-2 rounded-lg text-md-surface-on">
-                        <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
-                        <span>{step}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {assess.procedural_steps && assess.procedural_steps.length > 0 && (() => {
+                const isSuspectCase = 
+                  assess.procedural_steps.some(step => /tersangka|praperadilan|sprindik|penyidikan|terlapor/i.test(step)) ||
+                  /tersangka|praperadilan/i.test(assess.issue || '') ||
+                  /tersangka|praperadilan/i.test(assess.case_summary || '');
+                const proceduralTitle = isSuspectCase 
+                  ? "Alur Prosedural Penetapan Tersangka yang Sah" 
+                  : "Tahapan & Alur Prosedural Hukum";
+
+                return (
+                  <div className="bg-md-surface border border-md-outline-variant/40 rounded-xl p-4">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-md-primary-container text-md-primary-on-container">
+                      {proceduralTitle}
+                    </span>
+                    <ul className="mt-2.5 space-y-1.5">
+                      {assess.procedural_steps.map((step, idx) => (
+                        <li key={idx} className="flex items-start gap-2 text-xs bg-md-surface-low p-2 rounded-lg text-md-surface-on">
+                          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
 
               {/* Aggravating factors if available */}
               {assess.aggravating_factors && assess.aggravating_factors.length > 0 && (
@@ -215,13 +231,16 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, isLoading, onS
 
       {/* Loading Card */}
       {isLoading && (
-        <div className="self-start max-w-[85%] bg-md-surface-low border border-md-outline-variant/40 rounded-expressive-ai p-4 flex items-center gap-3">
+        <div className="self-start max-w-[85%] bg-md-surface-low border border-md-outline-variant/40 rounded-expressive-ai p-4 flex items-center gap-3 shadow-sm">
           <div className="w-4 h-4 border-2 border-md-primary border-t-transparent rounded-full animate-spin"></div>
           <span className="text-xs font-medium text-md-surface-on">
             Menganalisis unsur delik & menelusuri regulasi resmi peraturan.go.id...
           </span>
         </div>
       )}
+
+      {/* Auto-scroll anchor */}
+      <div ref={bottomRef} className="h-4 shrink-0" />
     </div>
   );
 };

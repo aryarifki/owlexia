@@ -1,28 +1,219 @@
 """IRAC Legal Reasoning Engine (Issue, Rule, Application, Conclusion).
 
 Menganalisis kasus hukum secara mendalam dengan standar argumentasi yuridis Indonesia:
-- Analisis unsur delik objektif (actus reus) & subjektif (mens rea)
-- Evaluasi faktor pemberat (hubungan darah orang tua, pembunuhan satu keluarga)
-- Evaluasi perbarengan tindak pidana (Concursus Realis)
-- Alur prosedural penetapan tersangka berbasis KUHAP jo Putusan MK 21/PUU-XII/2014
+- LLM Mode: Google Gemini (gemini-3.5-flash) dengan struktur output JSON IRAC
+- Heuristic Mode: Template penalaran berpresisi tinggi untuk landmark cases (KUHP, KUHAP, Putusan MK)
+- Graceful Failover: Otomatis beralih ke analisis heuristik jika API limit/offline
 """
+import os
+import json
+import logging
+import urllib.request
 from typing import List, Dict, Any, Optional
+
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
 from engine.models import LegalArticle, LegalAssessment, FactCompleteness
+from engine.config import get_gemini_api_key, get_gemini_model, get_reasoner_mode
+
+logger = logging.getLogger("owlexia.reasoner")
 
 
 class LegalReasoner:
     """Executes formal IRAC legal reasoning over retrieved articles and case facts."""
+
+    def __init__(
+        self,
+        mode: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None
+    ):
+        self.mode = mode or get_reasoner_mode()
+        self.api_key = api_key or get_gemini_api_key()
+        self.model = model or get_gemini_model()
+
+        # In pytest automated test suites, default to deterministic heuristic mode
+        # unless specifically instructed to hit live Gemini API
+        if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("TEST_USE_LIVE_GEMINI") != "1":
+            self.mode = "heuristic"
 
     def analyze(
         self,
         query: str,
         retrieved_articles: List[LegalArticle],
         completeness: FactCompleteness,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        force_mode: Optional[str] = None
     ) -> LegalAssessment:
-        query_lower = query.lower()
+        effective_mode = (force_mode or self.mode).lower()
         context = context or {}
         elements = {**completeness.identified_elements, **context}
+
+        # 1. Try Gemini LLM Reasoning if mode is 'llm' or 'hybrid'
+        if effective_mode in ["llm", "hybrid"] and self.api_key:
+            try:
+                assessment = self._analyze_with_gemini(
+                    query=query,
+                    articles=retrieved_articles,
+                    elements=elements
+                )
+                if assessment:
+                    return assessment
+            except Exception as e:
+                logger.warning(
+                    f"Gemini LLM reasoning encountered error: {e}. "
+                    "Falling back to heuristic reasoning."
+                )
+
+        # 2. Heuristic Rule-Based Reasoning Engine (Fallback & Landmark cases)
+        return self._analyze_heuristic(query, retrieved_articles, elements)
+
+    def _analyze_with_gemini(
+        self,
+        query: str,
+        articles: List[LegalArticle],
+        elements: Dict[str, Any]
+    ) -> Optional[LegalAssessment]:
+        """Calls Google Gemini API with JSON output mode adhering to IRAC schema."""
+        from engine.prompt_manager import PromptManager
+
+        try:
+            sys_prompt = PromptManager.get_instance().get_system_prompt()
+        except Exception:
+            sys_prompt = "Anda adalah OWLEXIA, sistem intelijen hukum positif Republik Indonesia."
+
+        # Format retrieved articles
+        articles_text = []
+        for idx, a in enumerate(articles[:5], 1):
+            exp = f"\n   *Penjelasan*: {a.explanation}" if a.explanation else ""
+            chap = f" ({a.chapter})" if a.chapter else ""
+            articles_text.append(
+                f"{idx}. **{a.regulation_name} - Pasal {a.article_number}**{chap}:\n"
+                f"   \"{a.content}\"{exp}"
+            )
+        norma_section = "\n\n".join(articles_text) if articles_text else "Tidak ada pasal spesifik yang ditemukan di basis data."
+
+        context_section = ""
+        if elements:
+            context_bullets = [f"- {k}: {v}" for k, v in elements.items()]
+            context_section = "\n\n**Fakta Teridentifikasi & Jawaban Klarifikasi:**\n" + "\n".join(context_bullets)
+
+        prompt = f"""{sys_prompt}
+
+==================================================
+TUGAS ANALISIS YURIDIS (IRAC FRAMEWORK):
+==================================================
+
+KASUS / PERTANYAAN PENGGUNA:
+"{query}"
+{context_section}
+
+RUJUKAN NORMA / PASAL TERKAIT DARI BASIS DATA HUKUM:
+{norma_section}
+
+PETUNJUK ANALISIS:
+1. Bedah permasalahan hukum menggunakan metode IRAC (Issue, Rule, Application, Conclusion).
+2. Lakukan subsumpsi fakta kasus ke unsur-unsur objektif (actus reus) & subjektif (mens rea) dari norma hukum di atas.
+3. Kaji klausul pemberatan sanksi, faktor peringanan, atau alur prosedural penegakan hukum bila relevan.
+4. Hasilkan respon HANYA dalam format JSON valid sesuai skema di bawah.
+
+SKEMA JSON OUTPUT:
+{{
+  "case_summary": "Ringkasan perkara dan fakta hukum utama dalam 1-2 kalimat.",
+  "issue": "Rumusan isu hukum utama secara presisi.",
+  "application_analysis": "Analisis yuridis mendalam (format Markdown terstruktur dengan poin-poin). Bahas pemenuhan unsur pasal, doktrin hukum, asas hukum, dan relevansi alat bukti.",
+  "conclusion": "Kesimpulan hukum tegas mengenai potensi sanksi pidana, kedudukan hukum, status hukum, atau hak-hak para pihak.",
+  "aggravating_factors": ["Faktor-faktor yang memberatkan sanksi hukum (jika ada)"],
+  "mitigating_factors": ["Faktor-faktor yang meringankan sanksi atau alasan pembenar/pemaaf (jika ada)"],
+  "procedural_steps": ["Tahapan prosedural hukum acara, alur implementasi teknis regulasi, atau syarat formil (hanya jika relevan dengan isu yang ditanyakan)"]
+}}
+"""
+
+        candidate_models = [self.model]
+        for fallback_m in ["gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-flash-latest"]:
+            if fallback_m not in candidate_models:
+                candidate_models.append(fallback_m)
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [{"text": prompt}]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": 0.2
+            }
+        }
+
+        json_bytes = json.dumps(payload).encode("utf-8")
+        out_text = ""
+        last_error = None
+
+        for model_name in candidate_models:
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+            try:
+                if httpx is not None:
+                    with httpx.Client(timeout=30.0) as client:
+                        resp = client.post(
+                            endpoint,
+                            content=json_bytes,
+                            headers={"Content-Type": "application/json"}
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            out_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                            logger.info(f"Gemini reasoning succeeded using model '{model_name}'.")
+                            break
+                        else:
+                            last_error = f"Model {model_name} returned status {resp.status_code}: {resp.text[:150]}"
+                            logger.warning(f"Gemini model failover: {last_error}")
+                else:
+                    req = urllib.request.Request(
+                        endpoint,
+                        data=json_bytes,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        out_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                        logger.info(f"Gemini reasoning succeeded using model '{model_name}'.")
+                        break
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Gemini model {model_name} request failed: {e}")
+
+        if not out_text:
+            raise RuntimeError(f"All Gemini models exhausted. Last error: {last_error}")
+
+        parsed = json.loads(out_text.strip())
+
+        return LegalAssessment(
+            case_summary=parsed.get("case_summary", f"Analisis hukum: {query}"),
+            issue=parsed.get("issue", f"Isu hukum terkait: {query}"),
+            applicable_rules=articles[:5],
+            application_analysis=parsed.get("application_analysis", ""),
+            conclusion=parsed.get("conclusion", ""),
+            aggravating_factors=parsed.get("aggravating_factors") or [],
+            mitigating_factors=parsed.get("mitigating_factors") or [],
+            procedural_steps=parsed.get("procedural_steps") or [],
+            legal_disclaimer=(
+                "Kajian ini disusun oleh OWLEXIA AI Engine berdasarkan regulasi positif Republik Indonesia. "
+                "Penerapan sanksi dan vonis definitif sepenuhnya bergantung pada fakta persidangan dan keyakinan hakim."
+            )
+        )
+
+    def _analyze_heuristic(
+        self,
+        query: str,
+        retrieved_articles: List[LegalArticle],
+        elements: Dict[str, Any]
+    ) -> LegalAssessment:
+        """Fallback deterministic heuristic reasoning for landmark cases."""
+        query_lower = query.lower()
 
         is_parent_murder = "orang tua" in query_lower or "ibu" in query_lower or "ayah" in query_lower
         is_family_murder = "satu keluarga" in query_lower or "sekeluarga" in query_lower or "seumur hidup" in query_lower
@@ -234,4 +425,3 @@ class LegalReasoner:
             mitigating_factors=[],
             legal_disclaimer="Kajian ini merupakan telaah yuridis normatif awal berdasarkan peraturan perundang-undangan yang terindeks."
         )
-
